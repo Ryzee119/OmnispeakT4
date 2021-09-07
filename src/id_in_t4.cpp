@@ -14,22 +14,33 @@ USBHub hub1(usbh);
 JoystickController joy1(usbh);
 JoystickController joy2(usbh);
 
+static uint32_t new_b = 0;
+static uint32_t delta_b = 0;
+static int16_t x_axis = 0, y_axis = 0;
+
 static void IN_T4_PumpEvents()
 {
     if (joy1 == false)
         return;
 
     //There's a few joystick buttons that need to be injected as keypressed
-    uint32_t b = joy1.getButtons();
+    delta_b = (joy1.getButtons() ^ new_b);
+    new_b = joy1.getButtons();
+    x_axis = joy1.getAxis(0);
+    y_axis = joy1.getAxis(1);
+    joy1.joystickDataClear();
 
     //Start (Main menu)
-    (b & (1 << 12)) ? IN_HandleKeyDown(IN_SC_Escape, 0) : IN_HandleKeyUp(IN_SC_Escape, 0);
+    if (((new_b & (1 << 12)) && (delta_b & (1 << 12))))  IN_HandleKeyDown(IN_SC_Escape, 0);
+    if ((!(new_b & (1 << 12)) && (delta_b & (1 << 12)))) IN_HandleKeyUp(IN_SC_Escape, 0);
 
     //Back (Status menu)
-    (b & (1 << 13)) ? IN_HandleKeyDown(IN_SC_Enter, 0) : IN_HandleKeyUp(IN_SC_Enter, 0);
+    if (((new_b & (1 << 13)) && (delta_b & (1 << 13))))  IN_HandleKeyDown(IN_SC_Enter, 0);
+    if ((!(new_b & (1 << 13)) && (delta_b & (1 << 13)))) IN_HandleKeyUp(IN_SC_Enter, 0);
 
     //B (Make the B button work in the main menu)
-    (b & (1 << 5)) ? IN_HandleKeyDown(IN_SC_B, 0) : IN_HandleKeyUp(IN_SC_B, 0);
+    if (((new_b & (1 << 5)) && (delta_b & (1 << 5))))  IN_HandleKeyDown(IN_SC_B, 0);
+    if ((!(new_b & (1 << 5)) && (delta_b & (1 << 5)))) IN_HandleKeyUp(IN_SC_B, 0);
 }
 
 static void IN_T4_WaitKey()
@@ -68,20 +79,15 @@ static bool IN_T4_JoyPresent(int joystick)
 
 static void IN_T4_JoyGetAbs(int joystick, int *x, int *y)
 {
-    uint32_t b = joy1.getButtons();
-    int x_axis = joy1.getAxis(0);
-    int y_axis = joy1.getAxis(1);
-
     *x = x_axis;
     *y = -y_axis + 1;
-
-    if (b & (1 << 8))
+    if (new_b & (1 << 8))
         *y = INT16_MIN;
-    if (b & (1 << 9))
+    if (new_b & (1 << 9))
         *y = INT16_MAX;
-    if (b & (1 << 10))
+    if (new_b & (1 << 10))
         *x = INT16_MIN;
-    if (b & (1 << 11))
+    if (new_b & (1 << 11))
         *x = INT16_MAX;
 }
 
@@ -93,17 +99,15 @@ static uint16_t IN_T4_JoyGetButtons(int joystick)
         return mask;
     }
 
-    uint32_t b = joy1.getButtons();
-    joy1.joystickDataClear();
-    if (b & (1 << 4))
+    if (new_b & (1 << 4))
         mask |= (1 << IN_joy_jump);
-    if (b & (1 << 5))
+    if (new_b & (1 << 5))
         mask |= (1 << IN_joy_fire);
-    if (b & (1 << 6))
+    if (new_b & (1 << 6))
         mask |= (1 << IN_joy_pogo);
-    if (b & (1 << 12))
+    if (new_b & (1 << 12))
         mask |= (1 << IN_joy_menu);
-    if (b & (1 << 13))
+    if (new_b & (1 << 13))
         mask |= (1 << IN_joy_status);
 
     return mask;
