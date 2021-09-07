@@ -51,6 +51,7 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
     uint16_t *dest = tft_buffer;
     uint8_t src_row[src->width];
     int y_dest = 0;
+    while(tft.asyncUpdateActive());
     for (int _y = scrlY; _y < src->height; _y++)
     {
         if (y_dest >= 240)
@@ -94,8 +95,13 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
 
 static void VL_T4_WaitVBLs(int vbls)
 {
-    while (tft.asyncUpdateActive())
-        ;
+    //Game runs at 35 fps, simulate a vblank every 1/35 seconds
+    static int frame_start_time = 0;
+    do
+    {
+        yield();
+    } while (micros() - frame_start_time < (1000000 * vbls / 35));
+    frame_start_time = micros();
 }
 
 static void *VL_T4_CreateSurface(int w, int h, VL_SurfaceUsage usage)
@@ -161,7 +167,7 @@ static void VL_T4_RefreshPaletteAndBorderColor(void *screen)
         r = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]][0];
         g = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]][1];
         b = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]][2];
-        uint16_t c = ((r >> 3) << 11) | ((g >> 2) << 5) | ((b >> 3) << 0); //rgba 565 for the TFT
+        uint16_t c = ((r >> 3) << 11) | ((g >> 2) << 5) | ((b >> 3) << 0); //rgb 565 for the TFT
         palette[i] = c;
     }
 }
