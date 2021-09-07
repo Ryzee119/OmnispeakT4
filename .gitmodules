@@ -7,3 +7,6 @@
 [submodule "src/USBHost_t36"]
 	path = src/USBHost_t36
 	url = https://github.com/PaulStoffregen/USBHost_t36.git
+[submodule "src/printf"]
+	path = src/printf
+	url = https://github.com/mpaland/printf.git
