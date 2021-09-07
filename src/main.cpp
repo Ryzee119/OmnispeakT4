@@ -1,21 +1,10 @@
 //Copyright 2020, Ryan Wendland
 //SPDX-License-Identifier: GPL-2.0
-
 #include <Arduino.h>
 extern "C"
 {
-#include "id_ca.h"
-#include "id_fs.h"
-#include "id_in.h"
-#include "id_mm.h"
-#include "id_rf.h"
-#include "id_us.h"
-#include "id_vl.h"
+#include "printf.h"
 #include "ck_act.h"
-#include "ck_cross.h"
-#include "ck_def.h"
-#include "ck_game.h"
-#include "ck_play.h"
 #include "ck4_ep.h"
 #include "ck5_ep.h"
 #include "ck6_ep.h"
@@ -24,9 +13,17 @@ void CK_InitGame();
 void CK_DemoLoop();
 }
 
+void _putchar(char character)
+{
+    Serial1.write(character);
+    Serial1.flush();
+}
+
 CK_EpisodeDef *ck_currentEpisode;
 void setup()
 {
+    Serial1.begin(115200);
+
     FS_Startup();
     MM_Startup();
     CFG_Startup();
