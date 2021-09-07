@@ -29,7 +29,7 @@ static const int OPL_PIN_SHIFT = 13;
 //Timing backend for the gamelogic which uses the sound system
 static IntervalTimer t0_timer;
 
-//Audio interrupts
+//T0 service interrupts
 static void _t0service()
 {
     SDL_t0Service();
@@ -45,6 +45,9 @@ static void SD_t4_SetTimer0(int16_t int_8_divisor)
 
 static void SD_t4_alOut(uint8_t reg, uint8_t val)
 {
+    static uint32_t time_since_last = 0;
+    //Ensure its been 92 microseconds since last update so we dont go too fast
+    while (micros() - time_since_last < 92);
     //Write the register
     digitalWrite(OPL_PIN_A0, LOW);
     SPI.transfer(reg);
@@ -59,7 +62,7 @@ static void SD_t4_alOut(uint8_t reg, uint8_t val)
     digitalWrite(OPL_PIN_LATCH, LOW);
     delayMicroseconds(4);
     digitalWrite(OPL_PIN_LATCH, HIGH);
-    //delayMicroseconds(92);
+    time_since_last = micros();
 }
 
 static void SD_t4_PCSpkOn(bool on, int freq)
