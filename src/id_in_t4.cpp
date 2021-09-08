@@ -12,7 +12,6 @@ extern "C"
 USBHost usbh;
 USBHub hub1(usbh);
 JoystickController joy1(usbh);
-JoystickController joy2(usbh);
 
 static uint32_t new_b = 0;
 static uint32_t delta_b = 0;
@@ -23,8 +22,10 @@ static void IN_T4_PumpEvents()
     if (joy1 == false)
         return;
 
-    //There's a few joystick buttons that need to be injected as keypressed
+    //Store the delta between last pump
     delta_b = (joy1.getButtons() ^ new_b);
+    
+    //Store the current state
     new_b = joy1.getButtons();
     x_axis = joy1.getAxis(0);
     y_axis = joy1.getAxis(1);
@@ -72,8 +73,6 @@ static bool IN_T4_JoyPresent(int joystick)
 {
     if (joystick == 0)
         return joy1 == true;
-    if (joystick == 1)
-        return joy2 == true;
     return false;
 }
 
@@ -81,13 +80,13 @@ static void IN_T4_JoyGetAbs(int joystick, int *x, int *y)
 {
     *x = x_axis;
     *y = -y_axis + 1;
-    if (new_b & (1 << 8))
+    if (new_b & (1 << 8)) //DUP
         *y = INT16_MIN;
-    if (new_b & (1 << 9))
+    if (new_b & (1 << 9)) //DDOWN
         *y = INT16_MAX;
-    if (new_b & (1 << 10))
+    if (new_b & (1 << 10)) //DLEFT
         *x = INT16_MIN;
-    if (new_b & (1 << 11))
+    if (new_b & (1 << 11)) //DRIGHT
         *x = INT16_MAX;
 }
 
@@ -99,15 +98,15 @@ static uint16_t IN_T4_JoyGetButtons(int joystick)
         return mask;
     }
 
-    if (new_b & (1 << 4))
+    if (new_b & (1 << 4)) //A
         mask |= (1 << IN_joy_jump);
-    if (new_b & (1 << 5))
+    if (new_b & (1 << 5)) //B
         mask |= (1 << IN_joy_fire);
-    if (new_b & (1 << 6))
+    if (new_b & (1 << 6)) //X
         mask |= (1 << IN_joy_pogo);
-    if (new_b & (1 << 12))
+    if (new_b & (1 << 12)) //Start
         mask |= (1 << IN_joy_menu);
-    if (new_b & (1 << 13))
+    if (new_b & (1 << 13)) //Back
         mask |= (1 << IN_joy_status);
 
     return mask;
