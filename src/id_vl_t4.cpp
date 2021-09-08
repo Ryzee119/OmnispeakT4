@@ -25,9 +25,16 @@ typedef struct VL_T4_Surface
 #define TFT_MISO 39
 #define TFT_RST 255
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
+
+//All memory is malloced into RAM2 or extmem. However the front buffer we create statically in RAM1
+//for the best performance.
+static bool front_buffer_in_use = false;
+static uint8_t front_buffer[336 * 224];
+
+//TFT buffer must be in DMAMEM (RAM2)
 static DMAMEM uint16_t tft_buffer[320 * 240];
 static uint16_t palette[16];
-EXTMEM uint8_t extmem_start;
+static EXTMEM uint8_t extmem_start;
 
 static void VL_T4_SetVideoMode(int mode)
 {
@@ -47,10 +54,9 @@ static void VL_T4_SetVideoMode(int mode)
 
 static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffered)
 {
-    VL_T4_Surface *src = (VL_T4_Surface *)surface;
+    VL_T4_Surface *src = (VL_T4_Surface *)surface;;
     uint16_t *dest = tft_buffer;
-    uint8_t src_row[src->width];
-    int y_dest = 0;
+    int y_dest = 0, x_dest = 0;
     while(tft.asyncUpdateActive());
     for (int _y = scrlY; _y < src->height; _y++)
     {
@@ -60,8 +66,8 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
         }
 
         //Read the whole row in then draw the row
-        memcpy(src_row, &src->pixels[_y * src->width], src->width);
-        int x_dest = 0;
+        uint8_t *src_row = &src->pixels[_y * src->width];
+        x_dest = 0;
         for (int _x = scrlX; _x < src->width; _x++)
         {
             if (x_dest >= 320)
@@ -73,12 +79,12 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
             uint16_t colour565 = palette[src_row[_x]];
 
             //Where is it going
-            uint32_t dest_row = y_dest * VL_EGAVGA_GFX_WIDTH;
+            uint32_t dest_row = y_dest * 320;
             dest[dest_row + x_dest] = colour565;
             if (_y % 5 == 0)
             {
                 //Every 5th row, place the pixel on the next row too.
-                dest[(dest_row + VL_EGAVGA_GFX_WIDTH) + x_dest] = colour565;
+                dest[(dest_row + 320) + x_dest] = colour565;
             }
             x_dest++;
         }
@@ -109,7 +115,19 @@ static void *VL_T4_CreateSurface(int w, int h, VL_SurfaceUsage usage)
     VL_T4_Surface *surf = (VL_T4_Surface *)malloc(sizeof(VL_T4_Surface));
     surf->width = w;
     surf->height = h;
+    surf->use = usage;
 
+    //Attempt in RAM1
+    if (w == 336 && h == 224 && usage == VL_SurfaceUsage_FrontBuffer)
+    {
+        if (!front_buffer_in_use)
+        {
+            surf->pixels = front_buffer;
+            front_buffer_in_use = true;
+            return surf;
+        }
+        printf("Warning: Front buffer already in use. Attempting RAM2\n");
+    }
     //Attempt in RAM2
     surf->pixels = (uint8_t *)malloc(w * h);
     if (surf->pixels == NULL)
@@ -133,7 +151,12 @@ static void VL_T4_DestroySurface(void *surface)
     {
         return;
     }
-    if (surf->pixels && (uint32_t)surf->pixels >= (uint32_t)&extmem_start)
+
+    if (surf->pixels == front_buffer) 
+    {
+        front_buffer_in_use = false;
+    }
+    else if (surf->pixels && (uint32_t)surf->pixels >= (uint32_t)&extmem_start)
     {
         extmem_free(surf->pixels);
     }
