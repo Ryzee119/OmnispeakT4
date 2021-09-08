@@ -10,3 +10,6 @@
 [submodule "src/printf"]
 	path = src/printf
 	url = https://github.com/mpaland/printf.git
+[submodule "src/ILI9341_T4"]
+	path = src/ILI9341_T4
+	url = https://github.com/vindar/ILI9341_T4.git

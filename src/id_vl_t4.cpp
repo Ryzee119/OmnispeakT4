@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <Arduino.h>
-#include "ILI9341_t3n.h"
+#include "ILI9341Driver.h"
 
 extern "C"
 {
@@ -18,21 +18,22 @@ typedef struct VL_T4_Surface
 } VL_T4_Surface;
 
 #define TFT_ROTATION 1 //0-3
-#define TFT_DC 40
-#define TFT_CS 41
+#define TFT_DC 38
+#define TFT_CS 40
 #define TFT_MOSI 26
 #define TFT_SCK 27
 #define TFT_MISO 39
-#define TFT_RST 255
-ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
+#define TFT_RST 41
+ILI9341_T4::ILI9341Driver tft(TFT_CS, TFT_DC, TFT_SCK, TFT_MOSI, TFT_MISO, TFT_RST);
+DMAMEM uint16_t tft_buffer[240*320];
+DMAMEM uint16_t fb_internal[240*320];
+ILI9341_T4::DiffBuffStatic<4096> diff1;
 
 //All memory is malloced into RAM2 or extmem. However the front buffer we create statically in RAM1
 //for the best performance.
 static bool front_buffer_in_use = false;
 static uint8_t front_buffer[336 * 224];
 
-//TFT buffer must be in DMAMEM (RAM2)
-static DMAMEM uint16_t tft_buffer[320 * 240];
 static uint16_t palette[16];
 static EXTMEM uint8_t extmem_start;
 
@@ -40,12 +41,16 @@ static void VL_T4_SetVideoMode(int mode)
 {
     if (mode == 0xD)
     {
-        tft.begin();
+        tft.output(&Serial1);
+        while (!tft.begin(60000000, 6000000))
+        {
+            delay(1000); yield();
+        }
         tft.setRotation(TFT_ROTATION); //0-3
-        tft.setFrameBuffer(tft_buffer);
-        tft.useFrameBuffer(true);
-        tft.fillScreen(ILI9341_BLACK);
-        tft.updateScreen();
+        tft.setFramebuffers(fb_internal);
+        tft.setDiffBuffers(&diff1); 
+        tft.setRefreshRate(70);
+        tft.setVSyncSpacing(2);
     }
     else
     {
@@ -54,10 +59,9 @@ static void VL_T4_SetVideoMode(int mode)
 
 static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffered)
 {
-    VL_T4_Surface *src = (VL_T4_Surface *)surface;;
+    VL_T4_Surface *src = (VL_T4_Surface *)surface;
     uint16_t *dest = tft_buffer;
     int y_dest = 0, x_dest = 0;
-    while(tft.asyncUpdateActive());
     for (int _y = scrlY; _y < src->height; _y++)
     {
         if (y_dest >= 240)
@@ -96,7 +100,7 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
         }
         y_dest++;
     }
-    tft.updateScreenAsync();
+    tft.update(tft_buffer);
 }
 
 static void VL_T4_WaitVBLs(int vbls)
