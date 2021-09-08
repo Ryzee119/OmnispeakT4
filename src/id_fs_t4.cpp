@@ -14,17 +14,17 @@ File fp[MAX_FILES + 1];
 
 FLASHMEM static int get_handle()
 {
-    for (int handle = 1; handle < MAX_FILES; handle++)
+    for (int handle = 1; handle <= MAX_FILES; handle++)
     {
         if (!fp[handle])
             return handle;
     }
-    return -1;
+    return 0;
 }
 
 FLASHMEM static File *get_file(int handle)
 {
-    if (handle >= MAX_FILES)
+    if (handle > MAX_FILES)
         return NULL;
 
     if (handle == 0)
@@ -62,7 +62,7 @@ FLASHMEM size_t FS_Read(void *ptr, size_t size, size_t nmemb, FS_File handle)
     int br = fp->read((char *)ptr, num_bytes);
     if (br != num_bytes)
     {
-        //printf("%s: Read byte mismatch %d vs %d on handle %d\n", __FUNCTION__, br, num_bytes, handle);
+        printf("%s: Read byte mismatch %d vs %d on handle %d\n", __FUNCTION__, br, num_bytes, handle);
     }
     return br / size;
 }
@@ -124,7 +124,7 @@ FLASHMEM size_t FS_GetFileSize(FS_File handle)
 FLASHMEM static FS_File open_file(const char *filename, int mode)
 {
     int handle = get_handle();
-    if (handle == -1)
+    if (handle == 0)
     {
         printf("%s: Could not find handle for file %s\n", __FUNCTION__, filename);
         return 0;
@@ -166,7 +166,6 @@ FLASHMEM bool FS_IsKeenFilePresent(const char *filename)
         FS_CloseFile(handle);
         return true;
     }
-    printf("%s: Could not find file %s\n", __FUNCTION__, filename);
     return false;
 }
 
@@ -178,7 +177,6 @@ FLASHMEM bool FS_IsOmniFilePresent(const char *filename)
         FS_CloseFile(handle);
         return true;
     }
-    printf("%s: Could not find file %s\n", __FUNCTION__, filename);
     return false;
 }
 
@@ -190,7 +188,6 @@ FLASHMEM bool FS_IsUserFilePresent(const char *filename)
         FS_CloseFile(handle);
         return true;
     }
-    printf("%s: Could not find file %s\n", __FUNCTION__, filename);
     return false;
 }
 
@@ -331,7 +328,6 @@ FLASHMEM bool FS_LoadUserFile(const char *filename, mm_ptr_t *ptr, int *memsize)
         return false;
     }
 
-    //Get length of handle
     int length = FS_GetFileSize(handle);
 
     MM_GetPtr(ptr, length);
