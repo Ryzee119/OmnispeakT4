@@ -10,6 +10,9 @@ extern "C"
 #include "ck_cross.h"
 }
 
+//Just to get a pointer to the start of external RAM.
+static EXTMEM uint8_t extmem_start;
+
 typedef struct VL_T4_Surface
 {
     VL_SurfaceUsage use;
@@ -25,17 +28,17 @@ typedef struct VL_T4_Surface
 #define TFT_MISO 39
 #define TFT_RST 41
 ILI9341_T4::ILI9341Driver tft(TFT_CS, TFT_DC, TFT_SCK, TFT_MOSI, TFT_MISO, TFT_RST);
-DMAMEM uint16_t tft_buffer[240*320];
-DMAMEM uint16_t fb_internal[240*320];
-ILI9341_T4::DiffBuffStatic<4096> diff1;
+DMAMEM uint16_t tft_buffer[240*320]; //RGB565 TFT buffer
+DMAMEM uint16_t fb_internal[240*320]; //RGB565 TFT backbuffer
+ILI9341_T4::DiffBuffStatic<4096> diff1; //Manage diff between buffers
 
-//All memory is malloced into RAM2 or extmem. However the front buffer we create statically in RAM1
-//for the best performance.
+//All games memory is malloced into RAM2 or external RAM.
+//However the front buffer we create statically in RAM1 for the best performance.
 static bool front_buffer_in_use = false;
 static uint8_t front_buffer[336 * 224];
 
+//Game buffers are 8 bit indexed values with 16 colours. A palette is used to convert to RGB565.
 static uint16_t palette[16];
-static EXTMEM uint8_t extmem_start;
 
 static void VL_T4_SetVideoMode(int mode)
 {
@@ -46,7 +49,7 @@ static void VL_T4_SetVideoMode(int mode)
         {
             delay(1000); yield();
         }
-        tft.setRotation(TFT_ROTATION); //0-3
+        tft.setRotation(TFT_ROTATION);
         tft.setFramebuffers(fb_internal);
         tft.setDiffBuffers(&diff1); 
         tft.setRefreshRate(70);
@@ -69,7 +72,6 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
             break;
         }
 
-        //Read the whole row in then draw the row
         uint8_t *src_row = &src->pixels[_y * src->width];
         x_dest = 0;
         for (int _x = scrlX; _x < src->width; _x++)
@@ -92,7 +94,7 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
             }
             x_dest++;
         }
-        //Every 5th row incread the y value by an extra one. Over 200 rows, this will scale to 240 pixels.
+        //Every 5th row increases the y value by an extra one. Over 200 rows, this will scale to 240 pixels.
         //320x200 will get scaled to 320x240 which is the DOS aspect ratio.
         if (_y % 5 == 0)
         {
@@ -105,7 +107,7 @@ static void VL_T4_Present(void *surface, int scrlX, int scrlY, bool singleBuffer
 
 static void VL_T4_WaitVBLs(int vbls)
 {
-    //Game runs at 35 fps, simulate a vblank every 1/35 seconds
+    //Original game runs at 35 fps, wait n * vbls @ 35fps
     static int frame_start_time = 0;
     do
     {
@@ -120,8 +122,10 @@ static void *VL_T4_CreateSurface(int w, int h, VL_SurfaceUsage usage)
     surf->width = w;
     surf->height = h;
     surf->use = usage;
+    
+    //Memory preference is RAM1 then RAM2 the external RAM (fastest to slowest)
 
-    //Attempt in RAM1
+    //Attempt in RAM1 (We want to use the main front buffer for this)
     if (w == 336 && h == 224 && usage == VL_SurfaceUsage_FrontBuffer)
     {
         if (!front_buffer_in_use)
@@ -132,20 +136,25 @@ static void *VL_T4_CreateSurface(int w, int h, VL_SurfaceUsage usage)
         }
         printf("Warning: Front buffer already in use. Attempting RAM2\n");
     }
+
     //Attempt in RAM2
     surf->pixels = (uint8_t *)malloc(w * h);
-    if (surf->pixels == NULL)
+    if (surf->pixels != NULL)
     {
-        printf("Warning: Could not malloc surface internally. Attempting EXTMEM\n");
-        surf->pixels = (uint8_t *)extmem_malloc(w * h);
+        return surf;
     }
-    if (surf->pixels == NULL)
+
+    //Attempt in EXTMEM
+    printf("Warning: Could not malloc surface internally. Attempting EXTMEM\n");
+    surf->pixels = (uint8_t *)extmem_malloc(w * h);
+    if (surf->pixels != NULL)
     {
-        printf("Could not malloc surface %d bytes\n", w * h);
-        while (1)
-            yield();
+        return surf;
     }
-    return surf;
+
+    printf("Could not malloc surface %d bytes\n", w * h);
+    while (1) yield();
+    return NULL;
 }
 
 static void VL_T4_DestroySurface(void *surface)
@@ -155,7 +164,6 @@ static void VL_T4_DestroySurface(void *surface)
     {
         return;
     }
-
     if (surf->pixels == front_buffer) 
     {
         front_buffer_in_use = false;
@@ -180,10 +188,8 @@ static long VL_T4_GetSurfaceMemUse(void *surface)
 static void VL_T4_GetSurfaceDimensions(void *surface, int *w, int *h)
 {
     VL_T4_Surface *surf = (VL_T4_Surface *)surface;
-    if (w)
-        *w = surf->width;
-    if (h)
-        *h = surf->height;
+    *w = surf->width;
+    *h = surf->height;
 }
 
 static void VL_T4_RefreshPaletteAndBorderColor(void *screen)
@@ -362,33 +368,34 @@ static void VL_T4_FlushParams()
 }
 
 VL_Backend vl_t4_backend =
-    {
-        .setVideoMode = &VL_T4_SetVideoMode,
-        .createSurface = &VL_T4_CreateSurface,
-        .destroySurface = &VL_T4_DestroySurface,
-        .getSurfaceMemUse = &VL_T4_GetSurfaceMemUse,
-        .getSurfaceDimensions = &VL_T4_GetSurfaceDimensions,
-        .refreshPaletteAndBorderColor = &VL_T4_RefreshPaletteAndBorderColor,
-        .surfacePGet = &VL_T4_SurfacePGet,
-        .surfaceRect = &VL_T4_SurfaceRect,
-        .surfaceRect_PM = &VL_T4_SurfaceRect_PM,
-        .surfaceToSurface = &VL_T4_SurfaceToSurface,
-        .surfaceToSelf = &VL_T4_SurfaceToSelf,
-        .unmaskedToSurface = &VL_T4_UnmaskedToSurface,
-        .unmaskedToSurface_PM = &VL_T4_UnmaskedToSurface_PM,
-        .maskedToSurface = &VL_T4_MaskedToSurface,
-        .maskedBlitToSurface = &VL_T4_MaskedBlitToSurface,
-        .bitToSurface = &VL_T4_BitToSurface,
-        .bitToSurface_PM = &VL_T4_BitToSurface_PM,
-        .bitXorWithSurface = &VL_T4_BitXorWithSurface,
-        .bitBlitToSurface = &VL_T4_BitBlitToSurface,
-        .bitInvBlitToSurface = &VL_T4_BitInvBlitToSurface,
-        .scrollSurface = &VL_T4_ScrollSurface,
-        .present = &VL_T4_Present,
-        .getActiveBufferId = &VL_T4_GetActiveBufferId,
-        .getNumBuffers = &VL_T4_GetNumBuffers,
-        .flushParams = &VL_T4_FlushParams,
-        .waitVBLs = &VL_T4_WaitVBLs};
+{
+    .setVideoMode = &VL_T4_SetVideoMode,
+    .createSurface = &VL_T4_CreateSurface,
+    .destroySurface = &VL_T4_DestroySurface,
+    .getSurfaceMemUse = &VL_T4_GetSurfaceMemUse,
+    .getSurfaceDimensions = &VL_T4_GetSurfaceDimensions,
+    .refreshPaletteAndBorderColor = &VL_T4_RefreshPaletteAndBorderColor,
+    .surfacePGet = &VL_T4_SurfacePGet,
+    .surfaceRect = &VL_T4_SurfaceRect,
+    .surfaceRect_PM = &VL_T4_SurfaceRect_PM,
+    .surfaceToSurface = &VL_T4_SurfaceToSurface,
+    .surfaceToSelf = &VL_T4_SurfaceToSelf,
+    .unmaskedToSurface = &VL_T4_UnmaskedToSurface,
+    .unmaskedToSurface_PM = &VL_T4_UnmaskedToSurface_PM,
+    .maskedToSurface = &VL_T4_MaskedToSurface,
+    .maskedBlitToSurface = &VL_T4_MaskedBlitToSurface,
+    .bitToSurface = &VL_T4_BitToSurface,
+    .bitToSurface_PM = &VL_T4_BitToSurface_PM,
+    .bitXorWithSurface = &VL_T4_BitXorWithSurface,
+    .bitBlitToSurface = &VL_T4_BitBlitToSurface,
+    .bitInvBlitToSurface = &VL_T4_BitInvBlitToSurface,
+    .scrollSurface = &VL_T4_ScrollSurface,
+    .present = &VL_T4_Present,
+    .getActiveBufferId = &VL_T4_GetActiveBufferId,
+    .getNumBuffers = &VL_T4_GetNumBuffers,
+    .flushParams = &VL_T4_FlushParams,
+    .waitVBLs = &VL_T4_WaitVBLs
+};
 
 VL_Backend *VL_Impl_GetBackend()
 {
