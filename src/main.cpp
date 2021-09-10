@@ -28,7 +28,16 @@ void setup()
     MM_Startup();
     CFG_Startup();
 
+#ifdef EP4
     ck_currentEpisode = &ck4_episode;
+#elif EP5
+    ck_currentEpisode = &ck5_episode;
+#elif EP6
+    ck_currentEpisode = &ck6v15e_episode;
+#else
+    #error Error: EP4, EP5 or EP6 not defined.
+#endif
+
     ck_currentEpisode->defineConstants();
     ck_currentEpisode->hasCreatureQuestion = false;
 
