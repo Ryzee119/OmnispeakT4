@@ -4,7 +4,6 @@ A port of Commander Keen "Commander Keen in Goodbye Galaxy!" to the Teeny4.1 mic
 * Note: Requires game files from the original game. Ref https://github.com/sulix/omnispeak. The shareware version of Keen4 is linked there too.
 * Save game support support to an SD Card.
 * USB input driver (hardcoded for Xbox360 type controllers).
-* Save and load SRAM (Press Y to save).
 * Genuine OPL ADLIB Audio supported!. Requires [YM3812 OPL2 FM-synthesizer](https://www.tindie.com/products/cheerful/opl2-audio-board/).
 
 ## Needed Parts
